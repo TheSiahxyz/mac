@@ -1,13 +1,9 @@
 ### --- Basic Settings --- ###
 set autoquit true
-# set cleaner '~/.config/lf/cleaner'
-# set cleaner '~/.config/lf/lf_kitty_clean'
 set cleaner '~/.config/lf/cleaner'
-# set dircounts true
-set drawbox
+set drawbox true
 set dupfilefmt '%f_%n'
-set filesep "\n"  # default already
-# set hidden true
+set hidden false
 set hiddenfiles ".*:*.aux:*.log:*.bbl:*.bcf:*.blg:*.run.xml"
 set ignorecase true
 set icons true
@@ -15,73 +11,117 @@ set ifs "\n"
 set mouse true
 set number true
 set period 1
-# set previewer '~/.config/lf/lf_kitty_preview'
 set previewer '~/.config/lf/scope'
-# set previewer '~/.config/lf/scope-lf-wrapper'
 # set ratios 1:2:3:5
 set relativenumber true
 set scrolloff 10
-# set shell zsh
 set shellopts '-eu'
 
 
 ### --- Custom Functions --- ###
-# cmds/functions
-# cmd open-with ${{
-#     clear
-#     set -f
-#     rifle -l $fx | sed -e "s/:[a-Z]*:[a-Z]*:/ \| /"
-#     read -p "open with: " method
-#     rifle -p $method $fx
-# }}
-#
-cmd open ${{
-    case $(file --mime-type "$(readlink -f $f)" -b) in
-    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) localc $fx ;;
-    image/vnd.djvu|application/pdf|application/octet-stream|application/postscript) setsid -f zathura $fx >/dev/null 2>&1 ;;
-        text/*|application/json|inode/x-empty|application/x-subrip) $EDITOR $fx;;
-    image/x-xcf) setsid -f gimp $f >/dev/null 2>&1 ;;
-    image/svg+xml) display -- $f ;;
-    image/*) rotdir $f | grep -i "\.\(png\|jpg\|jpeg\|gif\|webp\|avif\|tif\|ico\)\(_large\)*$" |
-        setsid -f nsxiv -aio 2>/dev/null | while read -r file; do
-            [ -z "$file" ] && continue
-            lf -remote "send select \"$file\""
-            lf -remote "send toggle"
-        done &
-        ;;
-    audio/*|video/x-ms-asf) mpv --audio-display=no $f ;;
-    video/*) setsid -f mpv $f -quiet >/dev/null 2>&1 ;;
-    application/pdf|application/vnd.djvu|application/epub*) setsid -f zathura $fx >/dev/null 2>&1 ;;
-    application/pgp-encrypted) $EDITOR $fx ;;
-    application/vnd.openxmlformats-officedocument.wordprocessingml.document|application/vnd.oasis.opendocument.text|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/octet-stream|application/vnd.oasis.opendocument.spreadsheet|application/vnd.oasis.opendocument.spreadsheet-template|application/vnd.openxmlformats-officedocument.presentationml.presentation|application/vnd.oasis.opendocument.presentation-template|application/vnd.oasis.opendocument.presentation|application/vnd.ms-powerpoint|application/vnd.oasis.opendocument.graphics|application/vnd.oasis.opendocument.graphics-template|application/vnd.oasis.opendocument.formula|application/vnd.oasis.opendocument.database) setsid -f libreoffice $fx >/dev/null 2>&1 ;;
-        *) for f in $fx; do setsid -f $OPENER $f >/dev/null 2>&1; done;;
+# Chmod
+cmd chmods ${{
+    options=$(printf "a+x\n000\n644\n666\n755\n777")
+    choice=$(printf "%s" "$options" | fzf)
+    case "$choice" in
+        "a+x") mod="a+x";;
+        "000") mod="000";;
+        "644") mod="644";;
+        "666") mod="666";;
+        "755") mod="755";;
+        "777") mod="777";;
     esac
+    for file in $fx; do
+        chmod -R $mod "$file"
+    done
+    printf "Permissions set to $mod for selected files/directories."
+    lf -remote "send $id reload"
 }}
 
-cmd extract ${{
+# Compress
+cmd tar ${{
     clear; tput cup $(($(tput lines)/3)); tput bold
     set -f
     printf "%s\n\t" "$fx"
-    printf "extract?[y/N]"
+    printf "compress?[y/N]"
     read ans
     [ $ans = "y" ] && {
-        case $fx in
-            *.tar.bz2)   tar xjf $fx     ;;
-            *.tar.gz)    tar xzf $fx     ;;
-            *.bz2)       bunzip2 $fx     ;;
-            *.rar)       unrar e $fx     ;;
-            *.gz)        gunzip $fx      ;;
-            *.tar)       tar xf $fx      ;;
-            *.tbz2)      tar xjf $fx     ;;
-            *.tgz)       tar xzf $fx     ;;
-            *.zip)       unzip $fx       ;;
-            *.Z)         uncompress $fx  ;;
-            *.7z)        7z x $fx        ;;
-            *.tar.xz)    tar xf $fx      ;;
-        esac
+        printf "%s\n\t" "$fx"
+        printf "file name: "
+        read ans
+        mkdir $ans
+        cp -r $fx $ans
+        tar czf $ans.tar.gz $ans
+        rm -rf $ans
     }
 }}
 
+# Copy
+cmd copyto ${{
+    clear; tput cup $(($(tput lines)/3)); tput bold
+    set -f
+    clear; echo "Copy to where?"
+    dest="$(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' ${XDG_CONFIG_HOME:-$HOME/.config}/shell/bm-dirs | fzf | sed 's|~|$HOME|')" &&
+    for x in $fx; do
+        eval cp -ivr \"$x\" \"$dest\"
+    done &&
+    notify-send "📋 File(s) copied." "File(s) copies to $dest."
+}}
+cmd yank-dirname $dirname -- "$f" | head -c-1 | xclip -i -selection clipboard
+cmd yank-path $printf '%s' "$fx" | xclip -i -selection clipboard
+cmd yank-basename $basename -a -- $fx | head -c-1 | xclip -i -selection clipboard
+cmd yank-basename-without-extension &basename -a -- $fx | cut -d. -f1 | head -c-1 | xclip -i -selection clipboard
+
+# Create
+cmd mkdir ${{ clear; tput cup $(($(tput lines)/3)); tput bold
+    printf "Directory Name: "
+    read ans
+    mkdir $ans
+}}
+cmd touch ${{
+    clear; tput cup $(($(tput lines)/3)); tput bold
+    printf "File Name: "
+    read ans
+    $EDITOR $ans
+}}
+cmd link %{{
+    set -- $(cat ~/.local/share/lf/files)
+    mode="$1"
+    shift
+    if [ "$#" -lt 1 ]; then
+        lf -remote "send $id echo no files to link"
+        exit 0
+    fi
+    case "$mode" in
+        # symbolically copy mode is indicating a soft link
+        copy) ln -sr -t . -- "$@";;
+        # while a move mode is indicating a hard link
+        move) ln -t . -- "$@";;
+    esac
+    rm ~/.local/share/lf/files
+    lf -remote "send clear"
+}}
+
+# Cut
+cmd cut-add %{{
+    sed '1s/.*/move/' "$XDG_DATA_HOME/lf/files" > "$XDG_DATA_HOME/lf/files.tmp"
+    mv "$XDG_DATA_HOME/lf/files.tmp" "$XDG_DATA_HOME/lf/files"
+    echo "$fx" >> "$XDG_DATA_HOME/lf/files"
+    lf -remote "send $id unselect"
+    lf -remote "send $id sync"
+}}
+cmd cut-remove %{{
+    sed '1s/.*/move/' "$XDG_DATA_HOME/lf/files" > "$XDG_DATA_HOME/lf/files.tmp"
+    mv "$XDG_DATA_HOME/lf/files.tmp" "$XDG_DATA_HOME/lf/files"
+    echo "$fx" | while read -r file; do
+        sed "\|$file|d" "$XDG_DATA_HOME/lf/files" > "$XDG_DATA_HOME/lf/files.tmp"
+        mv "$XDG_DATA_HOME/lf/files.tmp" "$XDG_DATA_HOME/lf/files"
+    done
+    lf -remote "send $id unselect"
+    lf -remote "send $id sync"
+}}
+
+# Delete
 cmd delete ${{
     clear; tput cup $(($(tput lines)/3)); tput bold
     set -f
@@ -91,6 +131,48 @@ cmd delete ${{
     [ $ans = "y" ] && rm -rf -- $fx
 }}
 
+cmd trash ${{
+    files=$(printf "$fx" | tr '\n' ';')
+    while [ "$files" ]; do
+        file=${files%%;*}
+
+        trash-put "$(basename "$file")"
+        if [ "$files" = "$file" ]; then
+            files=''
+        else
+            files="${files#*;}"
+        fi
+    done
+}}
+
+cmd restore_trash ${{
+    trash-restore
+}}
+
+# Extract
+cmd extract ${{
+    clear; tput cup $(($(tput lines)/3)); tput bold
+    set -f
+    printf "%s\n\t" "$fx"
+    printf "extract?[y/N]"
+    read ans
+    [ $ans = "y" ] && {
+        case $fx in
+            *.tar.bz|*.tar.bz2|*.tbz|*.tbz2) tar xjf $fx;;
+            *.tar.gz|*.tgz) tar xzf $fx                 ;;
+            *.tar.xz|*.txz) tar xf $fx                  ;;
+            *.bz2)       bunzip2 $fx                    ;;
+            *.rar)       unrar e $fx                    ;;
+            *.gz)        gunzip $fx                     ;;
+            *.tar)       tar xf $fx                     ;;
+            *.zip)       unzip $fx                      ;;
+            *.Z)         uncompress $fx                 ;;
+            *.7z)        7z x $fx                       ;;
+        esac
+    }
+}}
+
+# Move
 cmd moveto ${{
     clear; tput cup $(($(tput lines)/3)); tput bold
     set -f
@@ -102,19 +184,52 @@ cmd moveto ${{
     notify-send "🚚 File(s) moved." "File(s) moved to $dest."
 }}
 
-cmd copyto ${{
-    clear; tput cup $(($(tput lines)/3)); tput bold
-    set -f
-    clear; echo "Copy to where?"
-    dest="$(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' ${XDG_CONFIG_HOME:-$HOME/.config}/shell/bm-dirs | fzf | sed 's|~|$HOME|')" &&
-    for x in $fx; do
-        eval cp -ivr \"$x\" \"$dest\"
-    done &&
-    notify-send "📋 File(s) copied." "File(s) copies to $dest."
+# MPV
+cmd mpvdir ${{
+    if [ -n "$fx" ]; then
+        set -- $fx
+        mpv -- "$@"
+    else
+        for file in *.mp4 *.mkv *.avi *.flv *.webm *.mov; do
+            [ -e "$file" ] && set -- "$@" "$file"
+        done
+        [ -n "$1" ] && mpv -- "$@"
+    fi
 }}
 
-cmd setbg "$1"
+# Open
+cmd open ${{
+    case $(file --mime-type "$(readlink -f $f)" -b) in
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) localc $fx ;;
+        image/vnd.djvu|application/pdf|application/postscript) setsid -f zathura $fx >/dev/null 2>&1 ;;
+        text/csv) sc-im $fx;;
+        text/*|application/json|inode/x-empty|application/x-subrip) $EDITOR $fx;;
+        image/x-xcf) setsid -f gimp $f >/dev/null 2>&1 ;;
+        image/svg+xml) display -- $f ;;
+        image/*) rotdir $f | grep -i "\.\(png\|jpg\|jpeg\|gif\|webp\|avif\|tif\|ico\)\(_large\)*$" |
+            setsid -f nsxiv -aio 2>/dev/null | while read -r file; do
+                [ -z "$file" ] && continue
+                lf -remote "send select \"$file\""
+                lf -remote "send toggle"
+            done &
+            ;;
+        audio/*|video/x-ms-asf) mpv --audio-display=no $f ;;
+        video/*) setsid -f mpv $f -quiet >/dev/null 2>&1 ;;
+        application/pdf|application/vnd.djvu|application/epub*) setsid -f zathura $fx >/dev/null 2>&1 ;;
+        application/pgp-encrypted) $EDITOR $fx ;;
+        application/vnd.openxmlformats-officedocument.wordprocessingml.document|application/vnd.oasis.opendocument.text|application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.oasis.opendocument.spreadsheet|application/vnd.oasis.opendocument.spreadsheet-template|application/vnd.openxmlformats-officedocument.presentationml.presentation|application/vnd.oasis.opendocument.presentation-template|application/vnd.oasis.opendocument.presentation|application/vnd.ms-powerpoint|application/vnd.oasis.opendocument.graphics|application/vnd.oasis.opendocument.graphics-template|application/vnd.oasis.opendocument.formula|application/vnd.oasis.opendocument.database) setsid -f libreoffice $fx >/dev/null 2>&1 ;;
+        application/octet-stream) case ${f##*.} in
+			doc|docx|xls|xlsx|odt|ppt|pptx) setsid -f libreoffice $fx >/dev/null 2>&1 ;;
+			ghw) setsid -f gtkwave $f >/dev/null 2>&1 ;;
+			ts) setsid -f mpv $f -quiet >/dev/null 2>&1 ;;
+			*) setsid -f zathura $fx >/dev/null 2>&1 ;;
+	   	esac ;;
+	*) for f in $fx; do setsid -f $OPENER $f >/dev/null 2>&1; done;;
+        *) for f in $fx; do setsid -f $OPENER $f >/dev/null 2>&1; done;;
+    esac
+}}
 
+# Rename
 cmd bulkrename ${{
     tmpfile_old="$(mktemp)"
     tmpfile_new="$(mktemp)"
@@ -136,45 +251,47 @@ cmd bulkrename ${{
     lf -remote "send $id unselect"
 }}
 
-cmd setwallpaper ${{ setwallpaper "$f" }}
-
-# Archive bindings
-cmd unarchive ${{
-  case "$f" in
-      *.zip) unzip "$f" ;;
-      *.tar.gz) tar -xzvf "$f" ;;
-      *.tar.bz2) tar -xjvf "$f" ;;
-      *.tar) tar -xvf "$f" ;;
-      *) echo "Unsupported format" ;;
-  esac
+# Samba
+cmd share-samba ${{ 
+    printf "%s\n\t" "$fx"
+    printf "Share this folder?[y/N]"
+    read ans
+    [ $ans = "y" ] && {
+        dmenusamba "$f" 
+    }
 }}
 
-# Trash bindings
-cmd trash ${{
-  files=$(printf "$fx" | tr '\n' ';')
-  while [ "$files" ]; do
-    file=${files%%;*}
-
-    trash-put "$(basename "$file")"
-    if [ "$files" = "$file" ]; then
-      files=''
-    else
-      files="${files#*;}"
+# Select
+cmd on-select &{{
+    lf -remote "send $id set statfmt \"$(eza -ld --color=always "$f")\""
+}}
+cmd load-select &{{
+    # skip if triggered via save-select from itself
+    if [ "$1" = "$id" ]; then
+        exit 0
     fi
-  done
-}}
 
-cmd restore_trash ${{
-  trash-restore
+    lf -remote "send $id unselect"
+    if [ -s ~/.local/share/lf/select ]; then
+        files=$(tr '\n' '\0' < ~/.local/share/lf/select | xargs -0 printf ' %q')
+        lf -remote "send $id toggle $files"
+    fi
+}}
+cmd save-select &{{
+    printf "%s" "$fs" > ~/.local/share/lf/select
+    lf -remote "send load-select $id"
+}}
+cmd alt-paste &{{
+    if [ -n "$fs" ]; then
+        lf -remote "send $id :$1; save-select"
+    fi
+    lf -remote "send $id paste"
+    lf -remote "send clear"
+    lf -remote "send $id reload"
 }}
 
 # Traversal
-cmd fzf $vi $(find . -name "$1" | fzf)
-cmd z %{{
-	result="$(zoxide query --exclude $PWD $@ | sed 's/\\/\\\\/g;s/"/\\"/g')"
-	lf -remote "send $id cd \"$result\""
-}}
-
+cmd fzf $nvim $(find . -name "$1" | fzf)
 cmd fzf_search ${{
     RG_PREFIX="rg --column --line-number --no-heading --color=always --smart-case "
     res="$(
@@ -185,98 +302,155 @@ cmd fzf_search ${{
     )"
     [ -n "$res" ] && lf -remote "send $id select \"$res\""
 }}
-
+cmd z %{{
+	result="$(zoxide query --exclude $PWD $@ | sed 's/\\/\\\\/g;s/"/\\"/g')"
+	lf -remote "send $id cd \"$result\""
+}}
 cmd zi ${{
 	result="$(zoxide query -i | sed 's/\\/\\\\/g;s/"/\\"/g')"
 	lf -remote "send $id cd \"$result\""
 }}
-
-cmd on-select &{{
-    lf -remote "send $id set statfmt \"$(eza -ld --color=always "$f")\""
+cmd follow_link %{{
+    lf -remote "send ${id} select '$(readlink $f)'"
 }}
 
+# Wallpaper
+cmd setbg "$1"
 
+
+# load selection on startup
 ### --- Bindings --- ###
 # Unbinding
+map b
+map c
 map d
-map m
-# map gh
+map f
+map g
+map H
+map M
+map p
+map s
+map t
+map v
+map w
+map y
+map z
+map ,
+
+# Chmod
+map cx chmods
+
+# Clear && Unselect
+map <c-l> :clear; unselect
+
+# Copy
+# map yy %cp -ri -- $fs .; clear
+map Y $printf "%s" "$fx" | xclip -selection clipboard; clear
+map yb yank-basename
+map yd yank-dirname
+map ye copyto; clear
+map yl $printf "%s" "$fx" | sed -E 's/^.+\[/https:\/\/piped.video\/watch?v=/' | sed -E 's/\]\..+//' | xclip -selection clipboard
+map yn yank-basename-without-extension
+map yp yank-path
+map yt $printf "%s" "$fx" | sed -E 's/^.+\[/https:\/\/www.youtube.com\/watch?v=/' | sed -E 's/\]\..+//' | xclip -selection clipboard
+map yy copy
+
+# Create
+map Md mkdir
+map Mf touch
+map Ml :link
+
+# Cut
+map dd cut-add
+map dr cut-remove
+
+# Delete
+map D trash; clear
+map <delete> delete; clear
+
+# Editor
+map <enter> $$EDITOR "$f"
+map V push :!nvim<space>
+
+# Extract
+map E extract; clear
+
+# Move
+map Me moveto; clear
+
+# MPV
+map Mpv mpvdir
+
+# Nsxiv
+map sx $nsxiv -pt "$(pwd)" # opens thumbnail mode
+
+# Open
+map O $mimeopen "$f"
+map o open
+map <c-o> $mimeopen --ask "$f"
+
+# Paste
+map pP alt-paste cut
+map pp alt-paste copy
+
+# Preview
+map zd set dirpreviews!
+map zp set preview!
 
 # Program
-map W $setsid -f $TERMINAL >/dev/null 2>&1
+map T $setsid -f $TERMINAL >/dev/null 2>&1
 map x $$f
 map X !$f
 
-# Basic Functions
-map u restore_trash
-map p paste
-map y copy
-map <enter> $$EDITOR "$f"
-map V push :!nvim<space>
-map bw setwallpaper
-map <c-l> clear
-
-# Acrchive
-map au unarchive
-
-# Create
-map mf push :touch<space>""<left>
-map md push :mkdir<space>-p<space>""<left>
-
-# Copy
-map C copyto
-map Y $printf "%s" "$fx" | xclip -selection clipboard
-
-# Delete
-map dd delete
-
-# Extract
-map E extract
-
-# Install (wine)
-map ae $wine "$f"
-
-# Move
-map M moveto
-
-# Open
-# map o $mimeopen "$f"
-# map O $mimeopen --ask "$f"
-map o open
+# Quit
+map <esc> quit
+map <c-c> quit
 
 # Rename
-map A :rename; cmd-end # at the very end
-map c :rename; cmd-delete-home # filename
-map C :rename; cmd-end; cmd-delete-home # entire filename
-map I :rename; cmd-home # at the very beginning
-map i :rename # before extension
 map a :rename; cmd-right # after extension
+map A :rename; cmd-end # at the very end
 map B bulkrename
+map r :rename; cmd-delete-home # filename
+map R :rename; cmd-end; cmd-delete-home # entire filename
+map i :rename # before extension
+map I :rename; cmd-home # at the very beginning
 
+# Redraw && Reload
+map <c-r> :redraw; reload
+
+# Restore
+map U restore_trash
+
+# Samba
+map sm share-samba
+
+# Select
+map <space> :toggle; down; save-select
+map su :unselect; save-select
+map sv :invert; save-select
+load-select
+
+# Tag
+map tg tag-toggle
 
 # Traversal
-map f $lf -remote "send $id select \"$(fzf)\""
-# map J $lf -remote "send $id cd $(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' ${XDG_CONFIG_HOME:-$HOME/.config}/shell/bm-dirs | fzf)"
-map F push :z<space>
+map fa $lf -remote "send $id select \"$(fzf)\""
+map fb $lf -remote "send $id cd $(sed -e 's/\s*#.*//' -e '/^$/d' -e 's/^\S*\s*//' ${XDG_CONFIG_HOME:-$HOME/.config}/shell/bm-dirs | fzf)"
+map fd $lf -remote "send $id select \"$(find . -type d | fzf)\""
+map ff $lf -remote "send $id select \"$(find . -type f | fzf)\""
 map J zi
-map g. set hidden!
-map gb cd ~/.local/bin
-map gc cd ~/.config
-map gd cd ~/Downloads
-map gD cd ~/Documents
 map gf :fzf_search
-map gh cd ~
-map gl cd ~/.config/lf
-map gp cd ~/Pictures
-map gr cd ~/.local/src
-map gs cd ~/.local/share
-map gt cd ~/.local/share/Trash/files
-map gw cd ~/.local/share/wallpaper
-map gv cd ~/Videos
-map <c-r> reload
-map <c-f> down
-map <c-b> up
+map gl follow_link
+map pv z
 
 # Wallpaper
-map bgf $setbg $f
-map bgc wetwallpaper
+map bg $setbg "$f"
+
+# Wine
+map wi $wine "$f"
+
+# Zip
+map Z tar
+
+# shortcuts
+source "~/.config/lf/shortcutrc"
